@@ -1,0 +1,622 @@
+---
+combi---
+title: "Analyzing Top Grossing and Top Rated Movies"
+author: "Noah Rini"
+output: html_document
+date: "2022-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Of all forms of entertainment, one of the most universally enjoyed is the film industry. The film industry is one that can unite the entire world with memorable stories and beloved characters, cementing the most popular movies in history by their cult statuses and financial successes. My project involves exploring both the top 100 highest grossing films of all time and the top 100 highest rated films on IMDb (Internet Movie Database); these sets of data will be analyzed both separately and comparatively. The objective of this project is to discover the most common attributes the most successful films share. Additionally, I would like to explore the influence domestic box office earnings have on total world earnings and examine which time period had the most thriving cinema.
+
+Statistics I will gather from the highest grossing films include the most common distributor and the impact of both domestic and international earnings on their total gross. Analyzing the top rated movies, I will discover the most featured directors and actors on the list. From both sets of data, I will examine which time periods saw the most films being released and how other factors such as run time and genre play into their success. Finally, I will find the overlap in both data sets and compare their performances at the box office.
+
+## Packages Used
+
+```{r}
+library(tidyverse) # used to tidy data, contains other packages
+library(tibble) # stores data as tibble, making manipulation easier
+library(dplyr) # used for data manipulation
+library(ggplot2) # used for making graphical representations
+```
+
+## Data Preparation
+
+The original data sets are both from Kaggle. Since you must be signed into an account to download the data, I will link them below.
+
+IMDB Movies Dataset: <https://www.kaggle.com/datasets/harshitshankhdhar/imdb-dataset-of-top-1000-movies-and-tv-shows> .
+
+Top 1000 Highest Grossing Movies: <https://www.kaggle.com/datasets/sanjeetsinghnaik/top-1000-highest-grossing-movies> .
+
+'IMDB Movies Dataset' contains information about the 1000 highest rated movies on IMDb. While not explicitly stated, the data seems to be fully collected from IMDb/IMDbPro, and is accurate as of 2020. The set includes 16 different variables about each film, such as title, year released, IMDb rating, genre, director, actors, and others. Any missing values appear blank in the original data set, but are denoted as 'NA' when opened in R; these are most prominent in the column "Certificate".
+
+'Top 1000 Highest Grossing Movies' contains information about the 1000 highest grossing Hollywood movies. The original data was sourced from IMDb, Rotten Tomatoes, and many other other websites, and was updated in the beginning of 2022. It includes 10 different variables, such as title, release year, distributor name, domestic gross, international gross, and more. Missing values are recorded as 'NA', which the creator of the data set notes are data-points they were unable to scrape from their source websites.
+
+Both sets of data were imported as .csv files through my work directory. I began by converting them into tibbles and extracting the first 100 rows.
+
+```{r, results=FALSE}
+rated <- read.csv("toprated.csv")
+rated <- tibble(rated)
+rated <- rated[1:100,-1]
+
+grossing <- read.csv("topgrossing.csv")
+grossing <- tibble(grossing)
+grossing <- grossing[1:100, ]
+```
+
+For the highest rated films data, I first separated the run-time variable into two columns, "runtime" and "label", to clear the characters "min" from the numeric value. I then removed the variables/columns "label", overview, and metascore. Finally, I created a new variable to indicate which decade each film was released in.
+
+```{r, results=FALSE}
+
+rated <- rated %>%
+  separate(Runtime, into=c("runtime","label"), sep=" ") %>%
+  mutate(label = NULL, runtime = as.integer(runtime), Overview = NULL,
+         Meta_score = NULL, Released_Year=as.integer(Released_Year))
+
+decade.rated <- NULL
+for(i in rated$Released_Year){
+  if((i>=1970)&(i<1980))
+    dec <- "1970s"
+  else if((i>=1930)&(i<1940))
+    dec <- "1930s"
+  else if((i>=1940)&(i<1950))
+    dec <- "1940s"
+  else if((i>=1950)&(i<1960))
+    dec <- "1950s"
+  else if((i>=1960)&(i<1970))
+    dec <- "1960s"
+  else if((i>=1980)&(i<1990))
+    dec <- "1980s"
+  else if((i>=1990)&(i<2000))
+    dec <- "1990s"
+  else if((i>=2000)&(i<2010))
+    dec <- "2000s"
+  else if((i>=2010)&(i<2020))
+    dec <- "2010s"
+  else
+    dec <- "2020s"
+  
+  decade.rated <- c(decade.rated,dec)
+  
+}
+
+rated <- rated %>%
+  add_column(decade.rated, .after = "Released_Year")
+
+rated <- rated %>%
+  mutate(Gross=str_remove_all(rated$Gross, ","),
+         Gross=as.integer(Gross))
+
+```
+
+For the highest grossing films data, I began by arranging the data in descending order of total world gross. Next, I separated variables release date into day and year, and run time into hours and minutes. I cleared the hours and minutes columns of any character values and converted the total run time to minutes by converting the hours to minutes and adding these values to the minute values. The following columns/variables were then removed: "date" (referring to the month and day of release), "hours" and "min" (no longer relevant after computing total run time), and "X" (column that provided the number of each row).
+
+```{r, results=FALSE}
+grossing <- grossing %>%
+  arrange(desc(World.Sales..in...)) %>%
+  separate(Release.Date, into=c("date","Year"), sep=", ") %>%
+  separate(Movie.Runtime, into=c("hours", "minutes"), sep=" hr ") %>%
+  separate(minutes, into=c("min", "runtime"), sep = " ") %>%
+  mutate(hours = as.integer(hours), min = as.integer(min), hours = hours*60,
+         runtime = hours+min, date=NULL, hours=NULL,
+         min=NULL, X=NULL)
+
+n_last <- 6
+Released <- substr(grossing$Title, nchar(grossing$Title) - n_last + 1, nchar(grossing$Title))
+Released <- str_remove_all(Released, "[()]")
+
+grossing$Title <- gsub("\\s*\\([^\\)]+\\)","",as.character(grossing$Title))
+grossing <- grossing %>%
+  mutate(Year=Released, Year=as.integer(Year), 
+         runtime=as.integer(runtime), Movie.Info=NULL)
+
+decade <- NULL
+for(i in grossing$Year){
+  if((i>=1970)&(i<1980))
+    dec <- "1970s"
+  else if((i>=1980)&(i<1990))
+    dec <- "1980s"
+  else if((i>=1990)&(i<2000))
+    dec <- "1990s"
+  else if((i>=2000)&(i<2010))
+    dec <- "2000s"
+  else if((i>=2010)&(i<2020))
+    dec <- "2010s"
+  else
+    dec <- "2020s"
+  
+  decade <- c(decade, dec)
+}
+
+grossing <- grossing %>%
+  add_column(decade)
+```
+
+Finally, the release years, noted after the title of each movie, were removed and stored in the "Year" column, thus replacing all missing values that were previously there. Similarly to the highest rated movies data, a new variable was created to indicate the decade each movie was released in.
+
+Preview of cleaned/manipulated data:
+
+```{r}
+head(grossing)
+head(rated)
+```
+
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Variable Name              | Description                                                                                    | Data Type | Missing Values |
++============================+================================================================================================+===========+================+
+| Series_Title/Title         | Title of movie                                                                                 | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Released_Year/Year         | Year a movie was released                                                                      | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| decade                     | Decade a movie was released                                                                    | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Certificate                | Certification of a film:                                                                       | character | 4              |
+|                            |                                                                                                |           |                |
+|                            | U (unrestricted), A (restricted to adult audiences, UA (parental guidance under the age of 12) |           |                |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| runtime                    | duration of each movie                                                                         | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Genre                      | classified genres of each film                                                                 | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| IMDB_Rating                | movie's rating on IMDb                                                                         | double    | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Director                   | name of the film's director                                                                    | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Star1                      | leading actor/actress in movie                                                                 | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Star2                      | second credited actor/actress                                                                  | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Star3                      | third credited actor/actress                                                                   | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Star4                      | fourth credited actor/actress                                                                  | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| No_of_Votes                | number of times rated on IMDb                                                                  | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Gross                      | total gross of each film (from highest rated data)                                             | character | 15             |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Distributor                | film's distributor (marketing, publicity, distribution)                                        | character | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| Domestic.Sales..in...      | total domestic/U.S. grossing of each movie                                                     | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| International.Sales..in... | total international grossing of each movie                                                     | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| World.Sales..in...         | total world gross of each movie                                                                | integer   | none           |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+| License                    | movie's content rating (G, PG, PG-13, R)                                                       | character | 12             |
++----------------------------+------------------------------------------------------------------------------------------------+-----------+----------------+
+
+## Exploratory Data Analysis
+
+I first wanted to find the most common attributes of each data set. To do this, I created a function to return the mode/most occurring instance of a variable.
+
+```{r, results=FALSE}
+mode_ft <- function(x){
+  ux <- unique(x)
+  tab <- tabulate(match(x, ux))
+  ux[tab == max(tab)]
+}
+```
+
+Using this mode function and the mean function, I found the following from the top 100 grossing movies:
+
+```{r, results=FALSE}
+grossing %>%
+  summarize("Average Runtime" = mean(grossing$runtime),
+            "Most Common Distributor" = mode_ft(grossing$Distributor),
+            "Most Common License Rating" = mode_ft(grossing$License),
+            "Year with Most Releases" = mode_ft(grossing$Year))
+
+nrow(subset(grossing, Year==2019))
+nrow(subset(grossing, Distributor=="Walt Disney Studios Motion Pictures"))
+
+```
+
++------------------+-------------------------------------+--------------------+-----------------------+
+| Average Duration | Most Common Distributor             | Most Common Rating | Year w/ Most Releases |
++==================+=====================================+====================+=======================+
+| 132 min.         | Walt Disney Studios Motion Pictures | PG-13              | 2019                  |
++------------------+-------------------------------------+--------------------+-----------------------+
+
+In 2019 alone, 10 of the top 100 highest grossing movies were released, 7 of them from Walt Disney Studios Motion Pictures. In total, Walt Disney was the distributor of 36 of the top 100, thriving off of movies from Marvel Studios and remakes of beloved Disney classics.
+
+Similarly, the following was obtained from the top 100 IMDb-rated movies:
+
+```{r, results=FALSE}
+rated %>%
+  summarize("Year with Most Releases" = mode_ft(rated$Released_Year),
+            "Most Common Certificate/Rating" = mode_ft(rated$Certificate),
+            "Average Runtime" = mean(rated$runtime),
+            "Most Common Genre" = mode_ft(rated$Genre))
+```
+
++------------------+-------------------+-------------------------+------------------------+
+| Average Duration | Most Common Genre | Most Common Certificate | Years w/ Most Releases |
++==================+===================+=========================+========================+
+| 135 min.         | Drama             | A (adult audiences)     | 1994, 2019, 2018       |
++------------------+-------------------+-------------------------+------------------------+
+
+Additionally, the most common actors in each respective role were found. I will refer to 'Star1' as the leading role, 'Star2' as secondary role, and 'Star3' and 'Star4' together as supporting cast. I also found the actor with the most appearances overall by concatenating all 4 columns.
+
+```{r, results=FALSE}
+director <- mode_ft(rated$Director) 
+star <- mode_ft(rated$Star1) 
+costar <- mode_ft(rated$Star2)
+supporting <- mode_ft(c(rated$Star3, rated$Star4))
+allactors <- c(rated$Star1, rated$Star2, rated$Star3, rated$Star4)
+
+mode_ft(allactors)
+
+pitt <- subset(rated, Star1=="Brad Pitt" | Star2=="Brad Pitt" | Star3=="Brad Pitt" | Star4=="Brad Pitt")
+niro <- subset(rated, Star1=="Robert De Niro" | Star2=="Robert De Niro" | Star3=="Robert De Niro" | Star4=="Robert De Niro")
+bale <- subset(rated, Star1=="Christian Bale")
+wood <- subset(rated, Star1=="Elijah Wood")
+hanks <- subset(rated, Star1=="Tom Hanks")
+chaplin <- subset(rated, Star1=="Charles Chaplin")
+```
+
++---------------------------------------------------------+-------------------------+------------------------+---------------------------+
+| Most Leading Roles                                      | Most Secondary Roles    | Most Common Supporting | Most Appearances Overall  |
++=========================================================+=========================+========================+===========================+
+| Christian Bale, Elijah Wood, Tom Hanks, Charles Chaplin | Matt Damon, R. Madhavan | Orlando Bloom          | Brad Pitt, Robert De Niro |
++---------------------------------------------------------+-------------------------+------------------------+---------------------------+
+
+The leaders of each specific category all have 3 appearances in said category, while overall leaders Brad Pitt and Robert De Niro have 4 total appearances in the top 100 highest rated films.
+
+To understand what makes the best of the best, I applied similar processes to the top 10 films from each data set.
+
+For the top 10 highest grossing movies of all time:
+
+```{r, results=FALSE}
+topgrossing <- grossing[1:10,]
+topgrossing %>%
+  summarize("Average Runtime" = mean(topgrossing$runtime),
+            "Most Common Distributor" = mode_ft(topgrossing$Distributor),
+            "Most Common License Rating" = mode_ft(topgrossing$License),
+            "Year with Most Releases" = mode_ft(topgrossing$Year))
+```
+
++------------------+-------------------------------------+--------------------+-----------------------+
+| Average Duration | Most Common Distributor             | Most Common Rating | Year w/ Most Releases |
++==================+=====================================+====================+=======================+
+| 149 min.         | Walt Disney Studios Motion Pictures | PG-13              | 2015                  |
++------------------+-------------------------------------+--------------------+-----------------------+
+
+For the top 10 highest rated movies on IMDb:
+
+```{r, results=FALSE}
+toprated <- rated[1:10,]
+toprated %>%
+  summarize("Average Runtime" = mean(toprated$runtime),
+            "Most Common Genre" = mode_ft(toprated$Genre),
+            "Year with Most Releases" = mode_ft(toprated$Released_Year),
+            "Most Common Certificare"=mode_ft(toprated$Certificate))
+```
+
++------------------+-------------------+-------------------------+-----------------------+
+| Average Duration | Most Common Genre | Most Common Certificate | Year w/ Most Releases |
++==================+===================+=========================+=======================+
+| 160              | Crime, drama      | A (adult audiences)     | 1994                  |
++------------------+-------------------+-------------------------+-----------------------+
+
+One of the most striking similarities between the top 10 highest rated and the top 10 highest grossing movies is their run-times, nearly two and a half hours on average for the highest grossing and approaching three hours for the top rated films.
+
+Many of the highest rated movies share similar directors. In order to compare them, I analyzed subsets of the data containing the movies from film directors that had at least 3 appearances on the list.
+
+```{r, results=FALSE}
+directors <- rated %>% 
+  group_by(Director) %>% 
+  filter(n()>=3)
+
+directors %>%
+  filter(Director=="Steven Spielberg") %>%
+  summarize("Average Rating"=mean(IMDB_Rating), "Total Gross"=sum(Gross),
+            "Average Gross"=mean(Gross))
+
+directors %>%
+  filter(Director=="Stanley Kubrick") %>%
+  summarize("Average Rating"=mean(IMDB_Rating), "Total Gross"=sum(Gross),
+            "Average Gross"=mean(Gross))
+
+# process repeated for each director with at least 3 ranking films
+```
+
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Director             | Number of Ranked Films | Average IMDb Rating | Total Gross (Millions) | Average Gross per Film (Millions) |
++======================+========================+=====================+========================+===================================+
+| Steven Spielberg     | 3                      | 8.63                | 561.599                | 187.199                           |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Stanley Kubrick      | 3                      | 8.4                 | 44.298                 | 14.766                            |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Sergio Leone         | 3                      | 8.57                | 16.743                 | 5.581                             |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Quentin Tarantino    | 3                      | 8.53                | 391.274                | 130.424                           |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Peter Jackson        | 3                      | 8.8                 | 1035.942               | 345.314                           |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Francis Ford Coppola | 3                      | 8.87                | 275.737                | 91.912                            |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Christopher Nolan    | 6                      | 8.62                | 1542.228               | 257.038                           |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+| Charles Chaplin      | 3                      | 8.47                | 0.470                  | 0.156                             |
++----------------------+------------------------+---------------------+------------------------+-----------------------------------+
+
+From these directors, accolades are held by many. Francis Ford Coppola has the highest average rating, while Peter Jackson, director of 'The Lord of the Rings' trilogy, holds the highest average gross per film. Christopher Nolan has both the most charting movies and the highest total gross.
+
+Next, I wanted to explore the popularity of each genre. Since almost all movies from both data sets have multiple genres listed, it took a little manipulating to combine all of the values into a single list for each data set.
+
+```{r, results=FALSE}
+genres <- rated$Genre %>%
+  strsplit(rated$Genre, split=", ")
+genres <- unlist(genres)
+genres <- tibble(genres)
+
+genres.grossing <- grossing$Genre
+genres.grossing <- gsub("\\[|\\]", "", genres.grossing)
+genres.grossing <- strsplit(genres.grossing, split=', ')
+genres.grossing <- unlist(genres.grossing)
+genres.grossing <- str_remove_all(genres.grossing, "['']")
+genres.grossing <- tibble(genres.grossing)
+```
+
+To find the most mentioned genres in each data set, I then plotted this data.
+
+```{r}
+plot8 <- ggplot(genres)
+plot9 <- plot8 + geom_bar(aes(genres, fill=genres)) + guides(fill="none") +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) + labs(
+    x="Genre",y="Count",title="Most Popular Genres of IMDb's Top 100 Rated Movies"
+  )
+plot9
+```
+
+```{r}
+plot10 <- ggplot(genres.grossing)
+plot11 <- plot10 + geom_bar(aes(genres.grossing, fill=genres.grossing)) + guides(fill="none") +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) + labs(x="Genre",
+  y="Count",title="Most Popular Genres of Top 100 Grossing Films (Worldwide)"
+  )
+plot11
+```
+
+A very large number of the highest rated films fit into the drama category, while the highest grossing films focus more on visual spectacle in the realms of action, adventure, sci-fi, and fantasy.
+
+Today, many of the most anticipated films are those that are either continuations of a pre-existing franchise or remakes of previously made movies. In order to compare franchise films/remakes to those that are not, I sorted through the highest grossing movie list to create a subset of the original data. In the franchise/remake data, I left out the first installments, such as 'The Avengers' and 'Minions', unless the franchise was based directly off of a book series, such as 'Twilight' and 'The Lord of the Rings: The Fellowship of the Ring'.
+
+```{r, results=FALSE}
+remakes <- grossing[c(2,4,5,6,7,8,10,11,12,14,15,16,18,19,20,22,24,25,27,28,29,31,32,33,
+           34,36,37,39,40,41,44,45,46,47,48,49,50,51,52,54,55,56,57,61,62,63,
+           65,67,68,72,73,75,76,77,81,85,88,89,94,95,99,100), ]
+
+not.remakes <- setdiff(grossing, remakes)
+
+remakes %>%
+  summarize("Total Gross"=sum(World.Sales..in...), "Average Gross"=mean(World.Sales..in...))
+
+not.remakes %>%
+  summarize("Total Gross"=sum(World.Sales..in...), "Average Gross"=mean(World.Sales..in...))
+
+disney <- grossing %>%
+  filter(Distributor=="Walt Disney Studios Motion Pictures")
+
+disney.remakes <- intersect(disney, remakes)
+```
+
++---------------------------+--------------------+-------------------+---------------------+
+| Type of Film              | Number of Listings | Total World Gross | Average World Gross |
+|                           |                    |                   |                     |
+|                           |                    | (Billions)        | (Billions)          |
++===========================+====================+===================+=====================+
+| Franchise/remake          | 62                 | 66.744623459      | 1.076526185         |
++---------------------------+--------------------+-------------------+---------------------+
+| Not franchise film/remake | 38                 | 36.758423959      | 0.967326946         |
++---------------------------+--------------------+-------------------+---------------------+
+
+62 of the top 100 grossing movies of all time are franchise films/remakes, grossing about 30 billion dollars more in total and around \$100 million more per film on average.
+
+As discovered earlier, Walt Disney Studios Motion Pictures has distributed more top grossing films than any other company, holding 36 of the top 100 spots. Of these 36, 23 are franchise films or remakes. To further analyze how certain Disney movies perform, I created a new variable "Category", which would delegate each film as a Marvel movie, Star Wars movie, modern remake, or other (encapsulating all other Disney films and franchises).
+
+```{r, results=FALSE}
+Category <- list('marvel','starwars','marvel','remake','marvel','other',"marvel","marvel",'starwars',
+                'other','remake','other','marvel','marvel','marvel','starwars','other','other','other',
+                 'remake','starwars','remake','other','remake','other','remake','other','other','marvel',
+                 'other','marvel','marvel','other','other','other','other')
+
+disney <- add_column(disney, Category)
+
+disney %>%
+  filter(Category=="marvel") %>%
+  summarize("Total Gross"=sum(World.Sales..in...),
+            "Average Gross"=mean(World.Sales..in...))
+
+disney %>%
+  filter(Category=="starwars") %>%
+  summarize("Total Gross"=sum(World.Sales..in...),
+            "Average Gross"=mean(World.Sales..in...))
+
+disney %>%
+  filter(Category=="remake") %>%
+  summarize("Total Gross"=sum(World.Sales..in...),
+            "Average Gross"=mean(World.Sales..in...))
+
+disney %>%
+  filter(Category=="other") %>%
+  summarize("Total Gross"=sum(World.Sales..in...),
+            "Average Gross"=mean(World.Sales..in...))
+
+```
+
++--------------+--------------------+------------------------+------------------------------------+
+| Category     | Number of Rankings | Total Gross (Billions) | Average Gross per Movie (Billions) |
++==============+====================+========================+====================================+
+| Marvel       | 11                 | 15.103                 | 1.373                              |
++--------------+--------------------+------------------------+------------------------------------+
+| Star Wars    | 4                  | 5.532                  | 1.383                              |
++--------------+--------------------+------------------------+------------------------------------+
+| Remake       | 6                  | 7.043                  | 1.174                              |
++--------------+--------------------+------------------------+------------------------------------+
+| Other        | 15                 | 14.801                 | 0.987                              |
++--------------+--------------------+------------------------+------------------------------------+
+
+Although still performing very well at the box office, stand alone movies and other franchise films on average do not perform as well as Marvel movies, Star Wars installments, and modern remakes of older Disney movies.
+
+**Domestic and International Performance vs. Total World Earnings**
+
+Being that the top 100 world grossing films data contains all Hollywood/American industry movies, how influential are their domestic box office earnings on their total world earnings?
+
+I used dplyr functions as follows to explore this:
+
+```{r, results=FALSE}
+gross_difference <- grossing %>%
+  filter(International.Sales..in...>=Domestic.Sales..in...) %>%
+  summarize("Total Domestic Gross (Billions)" = sum(Domestic.Sales..in...)/1000000000,
+            "Total International Gross (Billions)" = sum(International.Sales..in...)/100000000,
+            "Total Gross Difference (Billions)" = (sum(International.Sales..in...)
+            - sum(Domestic.Sales..in...))/1000000000)
+
+gross_difference
+```
+
+I found that the top 100 world grossing movies grossed a combined \$35.1 billion domestically and \$58.5 billion internationally, setting the gap between the two audiences at \$23.4 billion, favoring international earnings. In fact, only 13 out of the 100 ranked movies earned more in the domestic box office than internationally, with an average ratio of domestic earnings to international earnings of 1.46:1.
+
+To examine this further, I compared the domestic and international earnings of the top 10 grossing films of all time.
+
+```{r}
+plot1 <- ggplot(topgrossing)
+plot2 <- plot1 + geom_point(aes(x=Domestic.Sales..in.../1000000,
+                y=International.Sales..in.../1000000000,
+                color=Title)) + labs(x="Domestic Earnings (Millions)",
+                y="International Earnings (Billions)",
+                title="Top 10 Grossing Movies of All Time (Worldwide)") +
+                scale_color_discrete(name = "Movie")
+
+plot2
+
+topgrossing %>%
+  summarize("Domestic Gross"=Domestic.Sales..in..., "International Gross"=International.Sales..in...,
+  "Ratio (Domestic to International"=Domestic.Sales..in.../International.Sales..in...)
+```
+
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Movie                   | Total Earnings (Billions, rounded to nearest thousandth) | Ratio (Domestic to International Earnings) |
++=========================+==========================================================+============================================+
+| Avatar                  | 2.847                                                    | 0.364                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Avengers: Endgame       | 2.798                                                    | 0.443                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Titanic                 | 2.202                                                    | 0.428                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Star Wars: Episode VII  | 2.070                                                    | 0.827                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Avengers: Infinity War  | 2.048                                                    | 0.496                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Jurassic World          | 1.671                                                    | 0.641                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| The Lion King           | 1.663                                                    | 0.486                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Spider-Man: No Way Home | 1.544                                                    | 0.778                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| The Avengers            | 1.519                                                    | 0.696                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+| Furious 7               | 1.515                                                    | 0.304                                      |
++-------------------------+----------------------------------------------------------+--------------------------------------------+
+
+We see that none of the films earned as much domestically as they did internationally. For many, they earned double to triple their domestic gross in the international box office.
+
+**Success by Decade**
+
+Using the decade variable I created, I wanted to examine which decades saw the most successful movies be released. I omitted all films released in the 2020s to avoid any skews in the data.
+
+```{r}
+decades.gross <- subset(grossing, decade!="2020s")
+plot3 <- ggplot(decades.gross)
+plot4 <- plot3 + geom_bar(aes(decade, fill=decade)) +
+  labs(x="Decade",y="Number of Releases",title="Highest Grossing Films by Decade (Top 100)") +
+  guides(fill="none")
+plot4
+
+nrow(subset(grossing, decade=="2000s" | decade=="2010s"))
+
+nrow(subset(grossing, decade=="2010s"))
+```
+
+Of the qualifying 99 highest grossing movies, 89 were released from 2000 to 2019. Of these 89, 61 came out in the 2010s alone.
+
+```{r}
+decades.rated <- subset(rated, decade.rated!="2020s")
+plot5 <- ggplot(decades.rated)
+plot6 <- plot5 + geom_bar(aes(decade.rated, fill=decade.rated)) +
+  labs(x="Decade",y="Number of Releases",title="IMDB Highest Rated Movies by Decade (Top 100)") +
+  guides(fill="none")
+
+plot6
+
+nrow(subset(rated,decade.rated=="2010s"))
+```
+
+Of the qualifying 99 highest rated films, 47 were released from 2000 to 2019. Of all qualifying decades, the most movies from the all time highest rated list were released in the 2010s, where about a quarter (25/99) of them came out.
+
+```{r}
+overlap <- intersect(grossing$Title, rated$Series_Title)
+
+overlap.gross <- grossing %>%
+  filter(Title %in% overlap & runtime!=118) %>%
+  arrange(Title)
+overlap.rating <- rated %>%
+  filter(Series_Title %in% overlap) %>%
+  arrange(Series_Title)
+
+overlap <- overlap.gross %>%
+  add_column("IMDB"=overlap.rating$IMDB_Rating, .after = "Year")
+
+overlap.plot1 <- ggplot(overlap)
+overlap.plot2 <- overlap.plot1 + geom_bar(aes(x=decade, fill=decade)) + labs(x="Decade",y="Number of Releases", title="Top Rated and Top Grossing Movies")                 + theme(legend.position = "none")
+
+overlap.plot2
+```
+
+Of the 12 films to qualify for both the all time highest grossing and all time highest rated lists, 9 were released between 2000 and 2019. The most titles were released in the 2010s, just edging out the 2000s by one film.
+
+One final analysis will be done on the relationship between a film's IMDb rating and their financial success:
+
+```{r, results=FALSE}
+subset(overlap, decade=="2010s") %>%
+  summarize("Total Earnings"=sum(World.Sales..in...), "Average Rating"=mean(IMDB),
+            "Weight per 1 Point"=sum(World.Sales..in...)/mean(IMDB))
+
+subset(overlap, decade=="2000s") %>%
+  summarize("Total Earnings"=sum(World.Sales..in...), "Average Rating"=mean(IMDB),
+            "Weight per 1 Point"=sum(World.Sales..in...)/mean(IMDB))
+```
+
++-----------+-----------------------------------------------+---------------------+---------------------------------------------------------+
+| Decade    | Total Gross (Billions, rounded to thousandth) | Average IMDb Rating | Weight per 1 Star (Millions of \$ earned for each star) |
++===========+===============================================+=====================+=========================================================+
+| 2000s     | 3.997                                         | 8.85                | 451.659856                                              |
++-----------+-----------------------------------------------+---------------------+---------------------------------------------------------+
+| 2010s     | 7.838                                         | 8.5                 | 922.148241                                              |
++-----------+-----------------------------------------------+---------------------+---------------------------------------------------------+
+
+Of all 9 both top rated and top gross qualifying films released from 2000 and 2019, the 2000s, as a decade, have a slightly higher average rating on these films. On the other hand, these qualifying movies released in the 2010s profited about twice as much as those released the decade earlier, and thus have a much higher return for the quality of movie produced (i.e. if one of these movies released in the 2000s and one released in the 2010s had the same rating, the one released in the 2010s would gross about 2.04 times more (922/451)).
+
+## Summary
+
+Interested in the biggest driving factors behind successful movies, I analyzed data from both the highest grossing films of all time and the highest rated films on IMDb, both downloaded online from Kaggle. The data was interpreted by plotting and summarizing original variables, as well as new ones I created, such as decade and category (relating to Disney films). Insights were made about popular genres, accomplished directors, the importance of the international film market on box office earnings, and the production of successful films by decade.
+
+While a movie's run-time itself does not dictate whether it is 'good' or not, the data suggests that many of the most beloved and successful films are epics that range from two and a half to over three hours long.
+
+Of the highest rating directors, none have the same consistency as Christopher Nolan, who has double the amount of charting films as every other top director listed, and thus has the highest total grossing from the list.
+
+Drama encapsulates most of the highest rated films, while the highest grossing thrive off of the excitement of action and adventure.
+
+It is clear that in order to be cemented as one of the highest grossing films of all time, international success is crucial, with very few domestically dominated films cracking the top 100.
+
+While the span from 2000 to 2019 easily produced the greatest number of commercially and critically successful films, the 2010s earned much more for the quality they produced.
+
+Walt Disney Studios has distributed the highest number of top grossing films. Marvel, Star Wars, and modern Disney remakes are three film categories that perform exceptionally well at the box office, and it is very likely Disney will continue making these movies. Overall, these movies are the most financially successful and they seem to pose little risk for distribution companies. Their popularity and success in recent years indicate we are in the era of the blockbuster film and will likely make it harder and harder for smaller productions to be made, since they cannot guarantee the huge returns that these movies do.
+
+I analyzed the top 100 rankings of each data set, however greater trends may be shown from analyzing a larger amount. This analysis could be built on by scraping additional data on the budget of each movie to examine their net profits and how the ratio of earnings to budget affects placement on both the top rated and top grossing lists. Additionally, further analysis could be done into the box office earnings of each top appearing actor to examine who could bring the most profits, as well as the most common genre associations/pairings in the top rated and top grossing films.
